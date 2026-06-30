@@ -1,0 +1,1104 @@
+{
+  "name": "Exercise 1- Apify Lead Scrape to AI Score to GHL",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "926b9976-b337-4a36-ad96-e7f78479a629",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -3856,
+        752
+      ]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "searchQuery",
+              "value": "digital marketing agencies in Florida"
+            },
+            {
+              "name": "targetMarket",
+              "value": "Digital Marketing Agency"
+            },
+            {
+              "name": "source",
+              "value": "AI Lead Research - Brandon Apify"
+            }
+          ],
+          "number": [
+            {
+              "name": "maxResults",
+              "value": 5
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "59069d3e-1104-40ce-8361-7886f6490aa1",
+      "name": "Set Apify Search",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        -3584,
+        752
+      ],
+      "notes": "Change the searchQuery before each scrape. Keep maxResults low during testing."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.apify.com/v2/actor-tasks/{{$env.APIFY_ACTOR_TASK_ID}}/run-sync-get-dataset-items?token={{$env.APIFY_TOKEN}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"searchStringsArray\": [\"{{$json.searchQuery}}\"],\n  \"maxCrawledPlacesPerSearch\": {{$json.maxResults}},\n  \"language\": \"en\",\n  \"countryCode\": \"us\",\n  \"includeReviews\": false,\n  \"includeImages\": false,\n  \"includeOpeningHours\": false\n}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "c6db1dcf-ab69-4943-9344-7df45288b7de",
+      "name": "Run Apify Actor - Get Leads",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3360,
+        752
+      ],
+      "notes": "Uses Apify run-sync-get-dataset-items. Set APIFY_ACTOR_TASK_ID to the selected scraper Actor task and APIFY_TOKEN to the Apify API token (both as n8n environment variables). Actor input fields may need edits depending on the Actor."
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.all();\n\nconst searchConfig = $('Set Apify Search').first().json;\nconst maxResults = Number(searchConfig.maxResults || 5);\n\nlet raw = [];\n\nfor (const item of input) {\n  if (Array.isArray(item.json)) {\n    raw.push(...item.json);\n  } else if (Array.isArray(item.json.items)) {\n    raw.push(...item.json.items);\n  } else if (item.json && Object.keys(item.json).length) {\n    raw.push(item.json);\n  }\n}\n\nfunction first(...vals) {\n  return vals.find(v => v !== undefined && v !== null && String(v).trim() !== '') || '';\n}\n\nfunction normalizePhone(phone) {\n  return String(phone || '').replace(/[^0-9+]/g, '');\n}\n\nfunction normalizeWebsite(website) {\n  return String(website || '')\n    .toLowerCase()\n    .replace(/^https?:\\/\\//, '')\n    .replace(/^www\\./, '')\n    .replace(/\\/$/, '')\n    .trim();\n}\n\nfunction makeKey(website, phone, name, city) {\n  const w = normalizeWebsite(website);\n  const p = normalizePhone(phone);\n  const n = String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '').trim();\n  const c = String(city || '').toLowerCase().replace(/[^a-z0-9]/g, '').trim();\n\n  return w || p || `${n}-${c}`;\n}\n\nconst seen = new Set();\nconst output = [];\n\nfor (const lead of raw) {\n  const company = first(\n  lead.organizationName,\n  lead.companyName,\n  lead.company,\n  lead.accountName,\n  lead.placeName,\n  lead.name,\n  lead.title\n);\n\n  const website = first(\n    lead.organizationWebsite,\n    lead.website,\n    lead.url,\n    lead.site\n  );\n\n  const phone = first(\n    lead.phone,\n    lead.phoneUnformatted,\n    lead.phoneNumber,\n    lead.telephone\n  );\n\n  const email = first(\n    lead.email,\n    Array.isArray(lead.emails) ? lead.emails[0] : ''\n  );\n\n  const city = first(\n    lead.city,\n    lead.location?.city\n  );\n\n  const state = first(\n    lead.state,\n    lead.stateRegion,\n    lead.location?.state,\n    lead.region\n  );\n\n  const country = first(\n    lead.country,\n    lead.location?.country,\n    'United States'\n  );\n\n  const address = first(\n    lead.address,\n    lead.street,\n    lead.fullAddress\n  );\n\n  const category = first(\n    lead.categoryName,\n    lead.category,\n    Array.isArray(lead.categories) ? lead.categories[0] : '',\n    lead.industry\n  );\n\n  const mapsUrl = first(\n    lead.googleMapsUrl,\n    lead.placeUrl\n  );\n\n  const rating = first(\n    lead.totalScore,\n    lead.rating,\n    lead.stars\n  );\n\n  const reviews = first(\n    lead.reviewsCount,\n    lead.reviewCount,\n    lead.reviews\n  );\n\n  const decisionMakerName = first(\n    lead.fullName,\n    `${first(lead.firstName)} ${first(lead.lastName)}`.trim()\n  );\n\n  const decisionMakerTitle = first(\n    lead.position,\n    lead.seniority,\n    lead.title\n  );\n\n  const linkedInUrl = first(\n    lead.linkedInUrl,\n    lead.linkedinUrl,\n    lead.linkedin\n  );\n\n  const key = makeKey(website, phone, company, city);\n\n  if (!company || seen.has(key)) {\n    continue;\n  }\n\n  seen.add(key);\n\n  output.push({\n    json: {\n      'Prospect ID': `APIFY-${Date.now()}-${output.length + 1}`,\n      'Company Name': company,\n      'Website': website,\n      'Country': country,\n      'State/Region': state,\n      'Company Size': '',\n      'Target Market': searchConfig.targetMarket || 'Digital Marketing Agency',\n      'Services Offered': '',\n      'Decision Maker Name': decisionMakerName,\n      'Decision Maker Title': decisionMakerTitle,\n      'LinkedIn URL': linkedInUrl,\n      'Email': email,\n      'Phone': phone,\n      'Why They Are a Fit': '',\n      'Pain Point': '',\n      'Personalized Opening Line': '',\n      'Suggested Pitch': '',\n      'Lead Score': '',\n      'Status': 'Ready',\n      'Next Step': '',\n      'GHL Tags': '',\n      'GHL Contact ID': '',\n      'Notes': '',\n      'Source': 'AI Lead Research - Brandon Apify',\n      'Apify Run ID': first(lead.$runId, lead.runId, ''),\n      'Address': address,\n      'City': city,\n      'Category': category,\n      'Google Maps URL': mapsUrl,\n      'Rating': rating,\n      'Reviews Count': reviews,\n      'Duplicate Check Key': key\n    }\n  });\n\n  if (output.length >= maxResults) {\n    break;\n  }\n}\n\nreturn output;"
+      },
+      "id": "f47762a9-05cf-43bc-b82d-c69ca8ac5b45",
+      "name": "Normalize and Dedupe Apify Leads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3152,
+        752
+      ],
+      "notes": "Normalizes Apify scraper output. Dedupe happens within current run."
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "=https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?gid=0#gid=0",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Prospects",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Prospect ID",
+              "displayName": "Prospect ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company Name",
+              "displayName": "Company Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Website",
+              "displayName": "Website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "State/Region",
+              "displayName": "State/Region",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company Size",
+              "displayName": "Company Size",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Target Market",
+              "displayName": "Target Market",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Services Offered",
+              "displayName": "Services Offered",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Decision Maker Name",
+              "displayName": "Decision Maker Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Decision Maker Title",
+              "displayName": "Decision Maker Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "LinkedIn URL",
+              "displayName": "LinkedIn URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Why They Are a Fit",
+              "displayName": "Why They Are a Fit",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Pain Point",
+              "displayName": "Pain Point",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Personalized Opening Line",
+              "displayName": "Personalized Opening Line",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Suggested Pitch",
+              "displayName": "Suggested Pitch",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Lead Score",
+              "displayName": "Lead Score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Next Step",
+              "displayName": "Next Step",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "GHL Tags",
+              "displayName": "GHL Tags",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "GHL Contact ID",
+              "displayName": "GHL Contact ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Notes",
+              "displayName": "Notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Source",
+              "displayName": "Source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Apify Run ID",
+              "displayName": "Apify Run ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Address",
+              "displayName": "Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Category",
+              "displayName": "Category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Google Maps URL",
+              "displayName": "Google Maps URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Rating",
+              "displayName": "Rating",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Reviews Count",
+              "displayName": "Reviews Count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Duplicate Check Key",
+              "displayName": "Duplicate Check Key",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "ddf26f6e-aa06-4607-87d5-27ed7015b70f",
+      "name": "Append Scraped Leads to Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        -2928,
+        752
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "m8QVRf8ijtZ6Jg1v",
+          "name": "Google Sheets account 18"
+        }
+      },
+      "notes": "Configure Google Sheets credentials. This stages Apify leads before AI scoring."
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst originalLeads = $('Read Scraped Leads from Google Sheet').all();\n\nconst fixedQualifiedTags = [\n  'brandon-ai-lead',\n  'brandon-apify',\n  'n8n',\n  'ai-researched',\n  'qualified-lead'\n];\n\nconst fixedReviewTags = [\n  'brandon-ai-lead',\n  'brandon-apify',\n  'n8n',\n  'ai-researched',\n  'review-needed'\n];\n\nfunction cleanEmail(email) {\n  if (!email) return '';\n  return String(email)\n    .split(',')\n    .map(e => e.trim())\n    .filter(Boolean)[0] || '';\n}\n\nfunction extractAI(json) {\n  // Case 1: Direct AI JSON object\n  if (\n    json.services_offered ||\n    json.lead_score ||\n    json.why_fit ||\n    json.suggested_pitch\n  ) {\n    return json;\n  }\n\n  // Case 2: n8n OpenAI \"Message a Model\" output format\n  if (Array.isArray(json.output)) {\n    for (const outputItem of json.output) {\n      if (Array.isArray(outputItem.content)) {\n        for (const contentItem of outputItem.content) {\n          if (contentItem.text) {\n            if (typeof contentItem.text === 'object') {\n              return contentItem.text;\n            }\n\n            if (typeof contentItem.text === 'string') {\n              const cleaned = contentItem.text\n                .replace(/```json/g, '')\n                .replace(/```/g, '')\n                .trim();\n\n              return JSON.parse(cleaned);\n            }\n          }\n        }\n      }\n    }\n  }\n\n  // Case 3: Other possible OpenAI formats\n  const possibleText =\n    json.text ||\n    json.output_text ||\n    json.response ||\n    json.message?.content ||\n    json.choices?.[0]?.message?.content ||\n    '';\n\n  if (typeof possibleText === 'object' && possibleText !== null) {\n    return possibleText;\n  }\n\n  if (typeof possibleText === 'string' && possibleText.trim()) {\n    const cleaned = possibleText\n      .replace(/```json/g, '')\n      .replace(/```/g, '')\n      .trim();\n\n    return JSON.parse(cleaned);\n  }\n\n  throw new Error('Could not find AI JSON in OpenAI node output');\n}\n\nreturn items.map((item, index) => {\n  let ai;\n\n  try {\n    ai = extractAI(item.json);\n  } catch (error) {\n    ai = {\n      services_offered: '',\n      likely_decision_maker_title: '',\n      why_fit: 'AI parsing failed. Review manually.',\n      likely_pain_point: '',\n      personalized_opening_line: '',\n      suggested_pitch: '',\n      lead_score: 0,\n      recommended_next_step: 'Manual review required',\n      ghl_tags: ['ai-review-needed']\n    };\n  }\n\n  const base = originalLeads[index]?.json || {};\n\n  const leadScore = Number(ai.lead_score || 0);\n  const aiTags = Array.isArray(ai.ghl_tags) ? ai.ghl_tags : [];\n\n  const finalTags = leadScore >= 7\n    ? [...new Set([...fixedQualifiedTags, ...aiTags])]\n    : [...new Set([...fixedReviewTags, ...aiTags])];\n\n  return {\n    json: {\n      ...base,\n\n      'Email': cleanEmail(base['Email']),\n      'Source': 'AI Lead Research - Brandon Apify',\n\n      'Services Offered': ai.services_offered || '',\n      'Decision Maker Title': ai.likely_decision_maker_title || base['Decision Maker Title'] || '',\n      'Why They Are a Fit': ai.why_fit || '',\n      'Pain Point': ai.likely_pain_point || '',\n      'Personalized Opening Line': ai.personalized_opening_line || '',\n      'Suggested Pitch': ai.suggested_pitch || '',\n      'Lead Score': leadScore,\n      'Next Step': ai.recommended_next_step || '',\n      'Status': leadScore >= 7 ? 'Qualified - Push to GHL' : 'Review',\n      'GHL Tags': finalTags.join(','),\n\n      ghl_tags_array: finalTags\n    }\n  };\n});"
+      },
+      "id": "1ea9fce6-35f6-47ea-890a-9df03f4a6bc2",
+      "name": "Parse AI JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2352,
+        752
+      ],
+      "notes": "Combines scraped lead data with AI-generated scoring and notes."
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": "={{$env.BRANDON_GOOGLE_SHEET_ID}}",
+        "sheetName": "Prospects",
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "fe3455cf-bcc4-4839-92b4-062b4c19dfe5",
+      "name": "Append AI Scored Lead to Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        -1856,
+        800
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "xmFGPGIoxUloQtNZ",
+          "name": "Google Sheets account 9"
+        }
+      },
+      "notes": "Appends enriched/scored version. In production, replace with update-by-Prospect-ID to avoid duplicate rows."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json['Lead Score']}}",
+              "operation": "largerEqual",
+              "value2": 7
+            }
+          ]
+        }
+      },
+      "id": "a44fe1be-69c4-43c2-b929-0639a0044594",
+      "name": "Lead Score >= 7?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -2112,
+        672
+      ],
+      "notes": "Only qualified leads are sent to GHL."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://services.leadconnectorhq.com/contacts/upsert",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.GHL_API_TOKEN}}"
+            },
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  locationId: $env.GHL_LOCATION_ID,\n  firstName: $json[\"Decision Maker Name\"] || \"Unknown\",\n  lastName: \"\",\n  name: $json[\"Decision Maker Name\"] || $json[\"Company Name\"],\n  email: $json[\"Email\"] || \"\",\n  phone: $json[\"Phone\"] || \"\",\n  companyName: $json[\"Company Name\"],\n  website: $json[\"Website\"] || \"\",\n  address1: $json[\"Address\"] || \"\",\n  city: $json[\"City\"] || \"\",\n  state: $json[\"State/Region\"] || \"\",\n  country: $json[\"Country\"] || \"\",\n  source: \"AI Lead Research - Brandon Apify\",\n  tags: $json.ghl_tags_array || [\n    \"brandon-ai-lead\",\n    \"brandon-apify\",\n    \"n8n\",\n    \"ai-researched\",\n    \"qualified-lead\"\n  ]\n}) }}",
+        "options": {}
+      },
+      "id": "87947d48-48cc-4bf2-890d-1b756a96f535",
+      "name": "Upsert Qualified Lead to GHL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1856,
+        560
+      ],
+      "notes": "Creates or updates the GHL contact. Confirm required custom fields and duplicate settings in the GHL location."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{'https://services.leadconnectorhq.com/contacts/' + ($json.contact?.id || $json.id) + '/notes'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.GHL_API_TOKEN}}"
+            },
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "body",
+              "value": "=={{ `AI Research Summary - Brandon Apify LeadCompany: ${$('Parse AI JSON').all()[$itemIndex].json['Company Name'] || ''}Website: ${$('Parse AI JSON').all()[$itemIndex].json['Website'] || ''}Source: AI Lead Research - Brandon ApifyDecision Maker: ${$('Parse AI JSON').all()[$itemIndex].json['Decision Maker Name'] || ''}Decision Maker Title: ${$('Parse AI JSON').all()[$itemIndex].json['Decision Maker Title'] || ''}Services Offered:${$('Parse AI JSON').all()[$itemIndex].json['Services Offered'] || ''}Why They Are a Fit:${$('Parse AI JSON').all()[$itemIndex].json['Why They Are a Fit'] || ''}Pain Point:${$('Parse AI JSON').all()[$itemIndex].json['Pain Point'] || ''}Personalized Opening Line:${$('Parse AI JSON').all()[$itemIndex].json['Personalized Opening Line'] || ''}Suggested Pitch:${$('Parse AI JSON').all()[$itemIndex].json['Suggested Pitch'] || ''}Lead Score:${$('Parse AI JSON').all()[$itemIndex].json['Lead Score'] || ''}Next Step:${$('Parse AI JSON').all()[$itemIndex].json['Next Step'] || ''}Tags:${$('Parse AI JSON').all()[$itemIndex].json['GHL Tags'] || ''}`}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "52b99f89-9926-4703-a311-6865c77620a7",
+      "name": "Add AI Research Note to GHL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1600,
+        560
+      ],
+      "notes": "If GHL returns the contact ID in a different path, adjust the URL expression."
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a lead research assistant for Brandon, owner of a US-based appointment-setting and sales calling business. Return only valid JSON. No markdown. No extra explanation."
+            },
+            {
+              "content": "=Analyze this scraped prospect for Brandon's lead generation campaign.\n\nCompany Name: {{$json['Company Name']}}\nWebsite: {{$json['Website']}}\nPhone: {{$json['Phone']}}\nEmail: {{$json['Email']}}\nCity: {{$json['City']}}\nState/Region: {{$json['State/Region']}}\nCountry: {{$json['Country']}}\nCategory: {{$json['Category']}}\nDecision Maker Name: {{$json['Decision Maker Name']}}\nDecision Maker Title: {{$json['Decision Maker Title']}}\nLinkedIn URL: {{$json['LinkedIn URL']}}\n\nBrandon's offer:\nUS-based human callers for cold calling, warm lead follow-up, trade show follow-up, seminar reminders, appointment setting, and demo booking.\n\nMinimum target package:\n20 hours/month, around $1,000/month.\n\nIdeal prospects:\nDigital marketing agencies, SEO agencies, web design agencies, SaaS/software companies, and non-US agencies trying to reach US prospects.\n\nScoring rules:\n- 9-10: Strong agency/SaaS/company likely to need US appointment-setting or lead follow-up.\n- 7-8: Good fit, should be pushed to GHL.\n- 5-6: Possible fit but needs human review.\n- 1-4: Weak fit, local business, unclear company, or not relevant.\n\nReturn only valid JSON.\nNo markdown.\nNo explanation outside JSON.\n\nReturn JSON with these exact keys:\nservices_offered\nlikely_decision_maker_title\nwhy_fit\nlikely_pain_point\npersonalized_opening_line\nsuggested_pitch\nlead_score\nrecommended_next_step\nghl_tags\n\nlead_score must be a number from 1 to 10.\nghl_tags must be an array of short lowercase tags."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "textFormat": {
+            "textOptions": {
+              "type": "json_object"
+            }
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        -2672,
+        752
+      ],
+      "id": "f0248196-56ca-471e-92b7-c73e82aee1e9",
+      "name": "Message a model",
+      "credentials": {
+        "openAiApi": {
+          "id": "gb7pdVxL0KlSm64f",
+          "name": "OpenAi account 6"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Brandon AI Lead Research",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Prospects",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Prospect ID": "={{$('Parse AI JSON').all()[$itemIndex].json['Prospect ID']}}",
+            "Services Offered": "={{$('Parse AI JSON').all()[$itemIndex].json['Services Offered']}}",
+            "Why They Are a Fit": "={{$('Parse AI JSON').all()[$itemIndex].json['Why They Are a Fit']}}",
+            "Pain Point": "={{$('Parse AI JSON').all()[$itemIndex].json['Pain Point']}}",
+            "Personalized Opening Line": "={{$('Parse AI JSON').all()[$itemIndex].json['Personalized Opening Line']}}",
+            "Suggested Pitch": "={{$('Parse AI JSON').all()[$itemIndex].json['Suggested Pitch']}}",
+            "Lead Score": "={{$('Parse AI JSON').all()[$itemIndex].json['Lead Score']}}",
+            "Status": "Pushed to GHL",
+            "Next Step": "={{$('Parse AI JSON').all()[$itemIndex].json['Next Step']}}",
+            "GHL Tags": "={{$('Parse AI JSON').all()[$itemIndex].json['GHL Tags']}}",
+            "GHL Contact ID": "={{$('Upsert Qualified Lead to GHL').all()[$itemIndex].json.contact.id}}",
+            "Notes": "AI scored, pushed to GHL, and AI research note added successfully.",
+            "Source": "AI Lead Research - Brandon Apify"
+          },
+          "matchingColumns": [
+            "Prospect ID"
+          ],
+          "schema": [
+            {
+              "id": "Prospect ID",
+              "displayName": "Prospect ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Name",
+              "displayName": "Company Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Website",
+              "displayName": "Website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "State/Region",
+              "displayName": "State/Region",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company Size",
+              "displayName": "Company Size",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Target Market",
+              "displayName": "Target Market",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Services Offered",
+              "displayName": "Services Offered",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Decision Maker Name",
+              "displayName": "Decision Maker Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Decision Maker Title",
+              "displayName": "Decision Maker Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "LinkedIn URL",
+              "displayName": "LinkedIn URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Why They Are a Fit",
+              "displayName": "Why They Are a Fit",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Pain Point",
+              "displayName": "Pain Point",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Personalized Opening Line",
+              "displayName": "Personalized Opening Line",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Suggested Pitch",
+              "displayName": "Suggested Pitch",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Lead Score",
+              "displayName": "Lead Score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Next Step",
+              "displayName": "Next Step",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "GHL Tags",
+              "displayName": "GHL Tags",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "GHL Contact ID",
+              "displayName": "GHL Contact ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Notes",
+              "displayName": "Notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Source",
+              "displayName": "Source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Apify Run ID",
+              "displayName": "Apify Run ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Address",
+              "displayName": "Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Category",
+              "displayName": "Category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Google Maps URL",
+              "displayName": "Google Maps URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Rating",
+              "displayName": "Rating",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Reviews Count",
+              "displayName": "Reviews Count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Duplicate Check Key",
+              "displayName": "Duplicate Check Key",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -1408,
+        544
+      ],
+      "id": "a6003746-7d7f-4fea-9eba-e3ec5c36c9b4",
+      "name": "Update Qualified Lead in Google Sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "m8QVRf8ijtZ6Jg1v",
+          "name": "Google Sheets account 18"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set Apify Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Apify Search": {
+      "main": [
+        [
+          {
+            "node": "Run Apify Actor - Get Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Apify Actor - Get Leads": {
+      "main": [
+        [
+          {
+            "node": "Normalize and Dedupe Apify Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize and Dedupe Apify Leads": {
+      "main": [
+        [
+          {
+            "node": "Append Scraped Leads to Google Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append Scraped Leads to Google Sheet": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI JSON": {
+      "main": [
+        [
+          {
+            "node": "Lead Score >= 7?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Score >= 7?": {
+      "main": [
+        [
+          {
+            "node": "Upsert Qualified Lead to GHL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Append AI Scored Lead to Google Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Qualified Lead to GHL": {
+      "main": [
+        [
+          {
+            "node": "Add AI Research Note to GHL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Parse AI JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add AI Research Note to GHL": {
+      "main": [
+        [
+          {
+            "node": "Update Qualified Lead in Google Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "3785a920-bb4a-4ba2-a699-3baa5f6e0677",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "YOUR_N8N_INSTANCE_ID"
+  },
+  "id": "DSMT9jeIQJsXSIHI",
+  "tags": []
+}

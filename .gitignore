@@ -1,0 +1,30 @@
+# Environment & secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Credentials / tokens (never commit real ones)
+*credentials*.json
+*secret*
+*.pem
+*.key
+
+# n8n local data
+.n8n/
+n8n-data/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Logs & temp
+*.log
+node_modules/
+tmp/
+
+# Claude Code local session settings
+.claude/settings.local.json
