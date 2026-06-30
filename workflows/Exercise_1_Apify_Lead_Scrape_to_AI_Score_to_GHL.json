@@ -439,7 +439,7 @@
     {
       "parameters": {
         "operation": "append",
-        "documentId": "={{$env.BRANDON_GOOGLE_SHEET_ID}}",
+        "documentId": "={{$env.GOOGLE_SHEET_ID}}",
         "sheetName": "Prospects",
         "columns": {
           "mappingMode": "autoMapInputData",

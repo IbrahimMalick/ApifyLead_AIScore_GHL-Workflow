@@ -31,7 +31,7 @@ cp .env.example .env
 |----------|---------|-------------|
 | `APIFY_TOKEN` | Run Apify Actor node | Apify API token |
 | `APIFY_ACTOR_TASK_ID` | Run Apify Actor node | Actor task id, e.g. `username~leads-scraper-for-brandon` |
-| `BRANDON_GOOGLE_SHEET_ID` | Append AI Scored Lead node | Target spreadsheet id |
+| `GOOGLE_SHEET_ID` | Append AI Scored Lead node | Target spreadsheet id |
 | `GHL_API_TOKEN` | GHL Upsert / Note nodes | GHL Private Integration Token (Bearer) |
 | `GHL_LOCATION_ID` | GHL Upsert node | GHL location / sub-account id |
 
@@ -67,7 +67,7 @@ Category, Google Maps URL, Rating, Reviews Count, Duplicate Check Key
 
 Then update the Google Sheets nodes so they point at your spreadsheet
 (replace the `YOUR_GOOGLE_SHEET_ID` placeholder with your real id, or wire the
-`BRANDON_GOOGLE_SHEET_ID` variable).
+`GOOGLE_SHEET_ID` variable).
 
 ## 6. Configure GHL
 
